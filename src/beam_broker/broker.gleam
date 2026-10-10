@@ -1,5 +1,5 @@
 import beam_broker/consumer
-import beam_broker/protocol.{type BrokerMessage, type Request, type Response}
+import beam_broker/protocol.{type BrokerMessage, type Response}
 import beam_broker/publisher
 import beam_broker/topic
 import gleam/dict
@@ -64,8 +64,7 @@ fn handle_message(state: State, message: BrokerMessage) {
           create_consumer(topic, state, reply_to)
         protocol.RegisterPublisher(topic) ->
           create_publisher(topic, state, reply_to)
-        protocol.Publish(name, event) -> todo
-        protocol.ListTopics -> todo
+        protocol.ListTopics -> list_topics(state, reply_to)
       }
     }
   }
@@ -154,4 +153,9 @@ fn new_publisher(
       state
     }
   }
+}
+
+fn list_topics(state: State, reply_to: Subject(Response)) {
+  process.send(reply_to, protocol.Topics(dict.keys(state.topics)))
+  state
 }
