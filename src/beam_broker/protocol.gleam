@@ -16,7 +16,7 @@ pub type PublisherMessage {
 
 pub type Request {
   CreateTopic(name: String)
-  SubscribeToTopic(topic: String)
+  RegisterConsumer(topic: String)
   RegisterPublisher(topic: String)
   Publish(name: String, event: String)
   ListTopics
@@ -24,8 +24,8 @@ pub type Request {
 
 pub type Response {
   TopicCreated
-  Subscribed
-  Registered
+  ConsumerCreated
+  PublisherCreated
   Published
 
   Topics(List(String))

@@ -1,13 +1,13 @@
 import beam_broker/protocol.{type PublisherMessage, type TopicMessage}
-import gleam/erlang/process
+import gleam/erlang/process.{type Subject}
 import gleam/otp/actor
 
 pub type Args {
-  Args(name: process.Name(PublisherMessage), topic: process.Name(TopicMessage))
+  Args(topic: Subject(TopicMessage))
 }
 
 type State {
-  State(topic: process.Name(TopicMessage))
+  State(topic: Subject(TopicMessage))
 }
 
 /// Start a publisher actor
@@ -17,7 +17,6 @@ type State {
 pub fn start_actor(args: Args) {
   let state = State(args.topic)
   actor.new(state)
-  |> actor.named(args.name)
   |> actor.on_message(handle_message)
   |> actor.start
 }
@@ -25,8 +24,7 @@ pub fn start_actor(args: Args) {
 fn handle_message(state: State, message: PublisherMessage) {
   case message {
     protocol.Write(input) -> {
-      let subject = process.named_subject(state.topic)
-      process.send(subject, protocol.Append(input))
+      process.send(state.topic, protocol.Append(input))
       actor.continue(state)
     }
   }

@@ -1,5 +1,6 @@
 import beam_broker/consumer
 import beam_broker/protocol.{type BrokerMessage, type Request, type Response}
+import beam_broker/publisher
 import beam_broker/topic
 import gleam/dict
 import gleam/erlang/process.{type Subject}
@@ -15,7 +16,9 @@ pub type Args {
     consumer: process.Name(
       factory.Message(consumer.Args, Subject(protocol.ConsumerMessage)),
     ),
-    publisher: String,
+    publisher: process.Name(
+      factory.Message(publisher.Args, Subject(protocol.PublisherMessage)),
+    ),
   )
 }
 
@@ -27,7 +30,9 @@ type State {
     consumer: process.Name(
       factory.Message(consumer.Args, Subject(protocol.ConsumerMessage)),
     ),
-    publisher: String,
+    publisher: process.Name(
+      factory.Message(publisher.Args, Subject(protocol.PublisherMessage)),
+    ),
     topics: dict.Dict(String, Subject(protocol.TopicMessage)),
   )
 }
@@ -55,9 +60,10 @@ fn handle_message(state: State, message: BrokerMessage) {
     protocol.Request(request, reply_to) -> {
       case request {
         protocol.CreateTopic(name) -> create_topic(name, state, reply_to)
-        protocol.SubscribeToTopic(topic) ->
-          subscribe_to_topic(topic, state, reply_to)
-        protocol.RegisterPublisher(topic) -> todo
+        protocol.RegisterConsumer(topic) ->
+          create_consumer(topic, state, reply_to)
+        protocol.RegisterPublisher(topic) ->
+          create_publisher(topic, state, reply_to)
         protocol.Publish(name, event) -> todo
         protocol.ListTopics -> todo
       }
@@ -95,11 +101,7 @@ fn new_topic(name: String, state: State, reply_to: Subject(Response)) -> State {
   }
 }
 
-fn subscribe_to_topic(
-  topic: String,
-  state: State,
-  reply_to: Subject(Response),
-) {
+fn create_consumer(topic: String, state: State, reply_to: Subject(Response)) {
   case dict.get(state.topics, topic) {
     Ok(found) -> new_consumer(found, state, reply_to)
     Error(_) -> {
@@ -117,8 +119,35 @@ fn new_consumer(
   let supervisor = factory.get_by_name(state.consumer)
   case factory.start_child(supervisor, consumer.Args(topic)) {
     Ok(started) -> {
-      process.send(reply_to, protocol.Subscribed)
+      process.send(reply_to, protocol.ConsumerCreated)
       process.send(started.data, protocol.Poll)
+      state
+    }
+    Error(_) -> {
+      state
+    }
+  }
+}
+
+fn create_publisher(topic: String, state: State, reply_to: Subject(Response)) {
+  case dict.get(state.topics, topic) {
+    Ok(found) -> new_publisher(found, state, reply_to)
+    Error(_) -> {
+      process.send(reply_to, protocol.TopicNotFound)
+      state
+    }
+  }
+}
+
+fn new_publisher(
+  topic: Subject(protocol.TopicMessage),
+  state: State,
+  reply_to: Subject(Response),
+) -> State {
+  let supervisor = factory.get_by_name(state.publisher)
+  case factory.start_child(supervisor, publisher.Args(topic)) {
+    Ok(_) -> {
+      process.send(reply_to, protocol.PublisherCreated)
       state
     }
     Error(_) -> {
