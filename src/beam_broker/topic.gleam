@@ -32,7 +32,7 @@ fn handle_message(state: State, message: TopicMessage) {
       case simplifile.append(state.file_path, input) {
         Ok(_) -> actor.continue(state)
         Error(error) -> {
-          logging.log(logging.Error, simplifile.describe_error(error))
+          logging.log(logging.Warning, simplifile.describe_error(error))
           actor.continue(state)
         }
       }

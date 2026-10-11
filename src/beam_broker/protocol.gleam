@@ -18,6 +18,7 @@ pub type Request {
   CreateTopic(name: String)
   RegisterConsumer(topic: String)
   RegisterPublisher(topic: String)
+  PublishEvent(consumer: String, event: String)
   ListTopics
 }
 
@@ -25,11 +26,13 @@ pub type Response {
   TopicCreated
   ConsumerCreated
   PublisherCreated
+  Published
 
   Topics(List(String))
 
   TopicAlreadyExists
   TopicNotFound
+  PublishFailed
 }
 
 pub type BrokerMessage {
