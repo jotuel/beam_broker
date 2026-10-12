@@ -73,7 +73,8 @@ fn handle_message(state: State, message: Request) {
       actor.continue(create_consumer(topic, state, reply_to))
     protocol.CreatePublisher(topic, reply_to) ->
       actor.continue(create_publisher(topic, state, reply_to))
-    protocol.RegisterPublisher(name, subject) -> todo
+    protocol.RegisterPublisher(name, subject) ->
+      actor.continue(register_publisher(name, subject, state))
     protocol.PublishEvent(publisher, event, reply_to) ->
       actor.continue(publish(publisher, event, state, reply_to))
     protocol.ListTopics(reply_to) ->
@@ -177,12 +178,10 @@ fn new_publisher(
   reply_to: Subject(Response),
 ) -> State {
   let supervisor = factory.get_by_name(state.publisher)
-  case factory.start_child(supervisor, publisher.Args(topic)) {
-    Ok(started) -> {
-      let subject = started.data
-      let new_publishers = dict.insert(state.publishers, name, subject)
+  case factory.start_child(supervisor, publisher.Args(name, topic, state.own)) {
+    Ok(_) -> {
       process.send(reply_to, protocol.PublisherCreated)
-      State(..state, publishers: new_publishers)
+      state
     }
     Error(_) -> {
       logging.log(
@@ -192,6 +191,16 @@ fn new_publisher(
       state
     }
   }
+}
+
+fn register_publisher(
+  name: String,
+  subject: Subject(protocol.PublisherMessage),
+  state: State,
+) -> State {
+  let new_publishers = dict.insert(state.publishers, name, subject)
+  logging.log(logging.Info, "registered publisher: " <> name)
+  State(..state, publishers: new_publishers)
 }
 
 fn publish(
