@@ -15,11 +15,20 @@ pub type PublisherMessage {
 }
 
 pub type Request {
-  CreateTopic(name: String)
-  RegisterConsumer(topic: String)
-  RegisterPublisher(topic: String)
-  PublishEvent(consumer: String, event: String)
-  ListTopics
+  CreateTopic(name: String, reply_to: process.Subject(Response))
+  RegisterTopic(name: String, subject: process.Subject(TopicMessage))
+
+  CreateConsumer(topic: String, reply_to: process.Subject(Response))
+
+  CreatePublisher(topic: String, reply_to: process.Subject(Response))
+  RegisterPublisher(name: String, subject: process.Subject(PublisherMessage))
+
+  PublishEvent(
+    consumer: String,
+    event: String,
+    reply_to: process.Subject(Response),
+  )
+  ListTopics(reply_to: process.Subject(Response))
 }
 
 pub type Response {
@@ -33,8 +42,4 @@ pub type Response {
   TopicAlreadyExists
   TopicNotFound
   PublishFailed
-}
-
-pub type BrokerMessage {
-  Request(request: Request, reply_to: process.Subject(Response))
 }

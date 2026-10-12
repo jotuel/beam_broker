@@ -1,14 +1,15 @@
 import beam_broker/protocol.{type TopicMessage}
+import gleam/erlang/process.{type Subject}
 import gleam/otp/actor
 import logging
 import simplifile
 
 pub type Args {
-  Args(file_path: String)
+  Args(file_path: String, reply_to: Subject(protocol.Request))
 }
 
 pub type State {
-  State(file_path: String, next_offset: Int)
+  State(file_path: String, own: Subject(TopicMessage), next_offset: Int)
 }
 
 /// Start a topic actor
@@ -17,13 +18,34 @@ pub type State {
 /// and consume from, events. A topic is a prerequisite for
 /// both publishers and consumers
 ///
-pub fn start_actor(args: Args) {
-  let state = State(file_path: args.file_path, next_offset: 0)
+pub fn start_actor(
+  args: Args,
+) -> Result(actor.Started(Subject(TopicMessage)), actor.StartError) {
   let _ = simplifile.create_file(args.file_path)
 
-  actor.new(state)
-  |> actor.on_message(handle_message)
-  |> actor.start
+  let started =
+    actor.new_with_initialiser(5000, fn(own) {
+      Ok(
+        actor.initialised(State(
+          file_path: args.file_path,
+          own: own,
+          next_offset: 0,
+        ))
+        |> actor.returning(own),
+      )
+    })
+    |> actor.on_message(handle_message)
+    |> actor.start
+  case started {
+    Ok(result) -> {
+      process.send(
+        args.reply_to,
+        protocol.RegisterTopic(args.file_path, result.data),
+      )
+    }
+    Error(_) -> Nil
+  }
+  started
 }
 
 fn handle_message(state: State, message: TopicMessage) {
