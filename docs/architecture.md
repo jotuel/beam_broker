@@ -6,6 +6,7 @@ flowchart TD
         Root[Root Supervisor]
 
         Root --> Broker(Broker)
+        Root --> Wisp(Wisp/http server)
     end
 
     subgraph core[Core Program]
