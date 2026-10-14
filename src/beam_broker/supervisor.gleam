@@ -59,7 +59,7 @@ pub fn start_orchestrator() {
   let web_worker =
     supervision.worker(fn() {
       let handle_request = fn(request) {
-        router.handle_request(request, broker_reference)
+        router.handle_request(request, router.Context(broker_reference))
       }
       wisp_mist.handler(handle_request, wisp.random_string(64))
       |> mist.new
