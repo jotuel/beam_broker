@@ -1,13 +1,14 @@
-import beam_broker/protocol
+import beam_broker/protocol.{type BrokerMessage, ClientRequest}
 import beam_broker/web
 import gleam/erlang/process
 import gleam/http.{Get, Post}
+import gleam/list
 import gleam/string
 import simplifile
 import wisp.{type Request, type Response}
 
 pub type Context {
-  Context(broker_ref: process.Name(protocol.Request))
+  Context(broker_ref: process.Name(BrokerMessage))
 }
 
 pub fn handle_request(request: Request, ctx: Context) -> Response {
@@ -15,7 +16,7 @@ pub fn handle_request(request: Request, ctx: Context) -> Response {
 
   case wisp.path_segments(request) {
     [] -> home_page(request)
-    ["api", "topics"] -> todo
+    ["api", "topics"] -> create_topic(request, ctx)
     ["api", "consumers"] -> todo
     ["api", "publishers"] -> todo
     ["api", "publish"] -> todo
@@ -36,9 +37,44 @@ fn home_page(request: Request) -> Response {
   }
 }
 
+fn create_topic(request: Request, ctx: Context) -> Response {
+  use <- wisp.require_method(request, Post)
+  use form_data <- wisp.require_form(request)
+  case list.key_find(form_data.values, "topic_name") {
+    Ok(topic_name) -> {
+      let trimmed_name = string.trim(topic_name)
+      case trimmed_name == "" {
+        True -> wisp.html_response("Topic name cannot be empty", 400)
+        False -> {
+          let subject = process.named_subject(ctx.broker_ref)
+          case
+            process.call(subject, 1000, fn(reply_to) {
+              ClientRequest(protocol.CreateTopic(reply_to, trimmed_name))
+            })
+          {
+            Ok(_) ->
+              wisp.html_response("Topic '" <> trimmed_name <> "' created!", 200)
+            Error(error) ->
+              case error {
+                protocol.TopicAlreadyExists ->
+                  wisp.html_response("Topic already exists", 400)
+                protocol.TopicFailedToStart ->
+                  wisp.html_response("Topic actor failed to start", 500)
+              }
+          }
+        }
+      }
+    }
+    Error(Nil) -> wisp.bad_request("no topic_name found")
+  }
+}
+
 fn list_topics(request: Request, ctx: Context) -> Response {
   use <- wisp.require_method(request, Get)
   let subject = process.named_subject(ctx.broker_ref)
-  let result = process.call(subject, 1000, protocol.ListTopics)
+  let result =
+    process.call(subject, 1000, fn(reply_to) {
+      ClientRequest(protocol.ListTopics(reply_to))
+    })
   wisp.html_response(string.join(result, "\n"), 200)
 }

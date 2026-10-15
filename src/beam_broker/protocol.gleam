@@ -16,16 +16,19 @@ pub type PublisherMessage {
 
 pub type BrokerMessage {
   ClientRequest(Request)
+  RegisterTopic(name: String, subject: process.Subject(TopicMessage))
+  RegisterPublisher(name: String, subject: process.Subject(PublisherMessage))
 }
 
 pub type Request {
-  CreateTopic(name: String, reply_to: process.Subject(Response))
-  RegisterTopic(name: String, subject: process.Subject(TopicMessage))
+  CreateTopic(
+    reply_to: process.Subject(Result(Nil, CreateTopicError)),
+    name: String,
+  )
 
   CreateConsumer(topic: String, reply_to: process.Subject(Response))
 
   CreatePublisher(topic: String, reply_to: process.Subject(Response))
-  RegisterPublisher(name: String, subject: process.Subject(PublisherMessage))
 
   PublishEvent(
     consumer: String,
@@ -35,13 +38,16 @@ pub type Request {
   ListTopics(reply_to: process.Subject(List(String)))
 }
 
+pub type CreateTopicError {
+  TopicAlreadyExists
+  TopicFailedToStart
+}
+
 pub type Response {
-  TopicCreated
   ConsumerCreated
   PublisherCreated
   Published
 
-  TopicAlreadyExists
   TopicNotFound
   PublishFailed
 }

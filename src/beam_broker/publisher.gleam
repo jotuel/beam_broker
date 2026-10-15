@@ -6,7 +6,7 @@ pub type Args {
   Args(
     name: String,
     topic: Subject(TopicMessage),
-    reply_to: Subject(protocol.Request),
+    reply_to: Subject(protocol.BrokerMessage),
   )
 }
 

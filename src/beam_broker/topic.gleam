@@ -5,7 +5,7 @@ import logging
 import simplifile
 
 pub type Args {
-  Args(file_path: String, reply_to: Subject(protocol.Request))
+  Args(file_path: String, reply_to: Subject(protocol.BrokerMessage))
 }
 
 pub type State {

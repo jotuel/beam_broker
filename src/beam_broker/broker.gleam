@@ -1,5 +1,5 @@
 import beam_broker/consumer
-import beam_broker/protocol.{type Request, type Response}
+import beam_broker/protocol.{type BrokerMessage, type Response}
 import beam_broker/publisher
 import beam_broker/topic
 import gleam/dict
@@ -10,7 +10,7 @@ import logging
 
 pub type Args {
   Args(
-    name: process.Name(Request),
+    name: process.Name(BrokerMessage),
     topic: process.Name(
       factory.Message(topic.Args, Subject(protocol.TopicMessage)),
     ),
@@ -36,7 +36,7 @@ type State {
     ),
     topics: dict.Dict(String, Subject(protocol.TopicMessage)),
     publishers: dict.Dict(String, Subject(protocol.PublisherMessage)),
-    own: Subject(Request),
+    own: Subject(BrokerMessage),
   )
 }
 
@@ -63,33 +63,37 @@ pub fn start_actor(args: Args) {
   |> actor.start
 }
 
-fn handle_message(state: State, message: Request) {
+fn handle_message(state: State, message: BrokerMessage) {
   case message {
-    protocol.CreateTopic(name, reply_to) ->
-      actor.continue(create_topic(name, state, reply_to))
     protocol.RegisterTopic(name, subject) ->
       actor.continue(register_topic(name, subject, state))
-    protocol.CreateConsumer(topic, reply_to) ->
-      actor.continue(create_consumer(topic, state, reply_to))
-    protocol.CreatePublisher(topic, reply_to) ->
-      actor.continue(create_publisher(topic, state, reply_to))
     protocol.RegisterPublisher(name, subject) ->
       actor.continue(register_publisher(name, subject, state))
-    protocol.PublishEvent(publisher, event, reply_to) ->
-      actor.continue(publish(publisher, event, state, reply_to))
-    protocol.ListTopics(reply_to) ->
-      actor.continue(list_topics(state, reply_to))
+    protocol.ClientRequest(request) -> {
+      case request {
+        protocol.CreateTopic(reply_to, name) ->
+          actor.continue(create_topic(name, state, reply_to))
+        protocol.CreateConsumer(topic, reply_to) ->
+          actor.continue(create_consumer(topic, state, reply_to))
+        protocol.CreatePublisher(topic, reply_to) ->
+          actor.continue(create_publisher(topic, state, reply_to))
+        protocol.PublishEvent(publisher, event, reply_to) ->
+          actor.continue(publish(publisher, event, state, reply_to))
+        protocol.ListTopics(reply_to) ->
+          actor.continue(list_topics(state, reply_to))
+      }
+    }
   }
 }
 
 fn create_topic(
   name: String,
   state: State,
-  reply_to: Subject(Response),
+  reply_to: Subject(Result(Nil, protocol.CreateTopicError)),
 ) -> State {
   case dict.get(state.topics, name) {
     Ok(_) -> {
-      process.send(reply_to, protocol.TopicAlreadyExists)
+      process.send(reply_to, Error(protocol.TopicAlreadyExists))
       logging.log(logging.Warning, "topic already initialized: " <> name)
       state
     }
@@ -97,7 +101,11 @@ fn create_topic(
   }
 }
 
-fn new_topic(name: String, state: State, reply_to: Subject(Response)) -> State {
+fn new_topic(
+  name: String,
+  state: State,
+  reply_to: Subject(Result(Nil, protocol.CreateTopicError)),
+) -> State {
   let supervisor = factory.get_by_name(state.topic)
   case
     factory.start_child(
@@ -106,11 +114,12 @@ fn new_topic(name: String, state: State, reply_to: Subject(Response)) -> State {
     )
   {
     Ok(_) -> {
-      process.send(reply_to, protocol.TopicCreated)
+      process.send(reply_to, Ok(Nil))
       state
     }
     Error(_) -> {
       logging.log(logging.Error, "failed to start topic actor: " <> name)
+      process.send(reply_to, Error(protocol.TopicFailedToStart))
       state
     }
   }
