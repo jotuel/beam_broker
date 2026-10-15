@@ -14,6 +14,10 @@ pub type PublisherMessage {
   Write(event: String)
 }
 
+pub type BrokerMessage {
+  ClientRequest(Request)
+}
+
 pub type Request {
   CreateTopic(name: String, reply_to: process.Subject(Response))
   RegisterTopic(name: String, subject: process.Subject(TopicMessage))
@@ -28,7 +32,7 @@ pub type Request {
     event: String,
     reply_to: process.Subject(Response),
   )
-  ListTopics(reply_to: process.Subject(Response))
+  ListTopics(reply_to: process.Subject(List(String)))
 }
 
 pub type Response {
@@ -36,8 +40,6 @@ pub type Response {
   ConsumerCreated
   PublisherCreated
   Published
-
-  Topics(List(String))
 
   TopicAlreadyExists
   TopicNotFound

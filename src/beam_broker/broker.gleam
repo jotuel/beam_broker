@@ -223,7 +223,7 @@ fn publish(
   }
 }
 
-fn list_topics(state: State, reply_to: Subject(Response)) {
-  process.send(reply_to, protocol.Topics(dict.keys(state.topics)))
+fn list_topics(state: State, reply_to: Subject(List(String))) {
+  process.send(reply_to, dict.keys(state.topics))
   state
 }
