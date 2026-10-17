@@ -13,6 +13,7 @@ pub type ConsumerMessage {
 
 pub type PublisherMessage {
   Write(event: String)
+  ResyncPublisher(topic: process.Subject(TopicMessage))
 }
 
 pub type BrokerMessage {
@@ -33,7 +34,10 @@ pub type Request {
     topic: String,
   )
 
-  CreatePublisher(topic: String, reply_to: process.Subject(Response))
+  CreatePublisher(
+    reply_to: process.Subject(Result(Nil, CreatePublisherError)),
+    topic: String,
+  )
 
   PublishEvent(
     consumer: String,
@@ -52,6 +56,12 @@ pub type CreateConsumerError {
   ConsumerAlreadyExists
   ConsumerTargetNotFound
   ConsumerFailedToStart
+}
+
+pub type CreatePublisherError {
+  PublisherAlreadyExists
+  PublisherTargetNotFound
+  PublisherFailedToStart
 }
 
 pub type Response {

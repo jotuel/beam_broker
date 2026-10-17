@@ -18,8 +18,7 @@ pub fn handle_request(request: Request, ctx: Context) -> Response {
     [] -> home_page(request)
     ["api", "topics"] -> create_topic(request, ctx)
     ["api", "consumers"] -> create_consumer(request, ctx)
-    ["api", "publishers"] -> wisp.not_found()
-    //todo
+    ["api", "publishers"] -> create_publisher(request, ctx)
     ["api", "publish"] -> wisp.not_found()
 
     //todo
@@ -90,7 +89,10 @@ fn create_consumer(request: Request, ctx: Context) -> Response {
             })
           {
             Ok(_) ->
-              wisp.html_response("Topic '" <> trimmed_name <> "' created!", 200)
+              wisp.html_response(
+                "Consumer '" <> trimmed_name <> "' created!",
+                200,
+              )
             Error(error) ->
               case error {
                 protocol.ConsumerAlreadyExists ->
@@ -99,6 +101,43 @@ fn create_consumer(request: Request, ctx: Context) -> Response {
                   wisp.html_response("Topic not found", 400)
                 protocol.ConsumerFailedToStart ->
                   wisp.html_response("Consumer actor failed to start", 500)
+              }
+          }
+        }
+      }
+    }
+    Error(Nil) -> wisp.bad_request("no topic_name found")
+  }
+}
+
+fn create_publisher(request: Request, ctx: Context) -> Response {
+  use <- wisp.require_method(request, Post)
+  use form_data <- wisp.require_form(request)
+  case list.key_find(form_data.values, "topic_name") {
+    Ok(topic_name) -> {
+      let trimmed_name = string.trim(topic_name)
+      case trimmed_name == "" {
+        True -> wisp.html_response("Topic name cannot be empty", 400)
+        False -> {
+          let subject = process.named_subject(ctx.broker_ref)
+          case
+            process.call(subject, 1000, fn(reply_to) {
+              ClientRequest(protocol.CreatePublisher(reply_to, trimmed_name))
+            })
+          {
+            Ok(_) ->
+              wisp.html_response(
+                "Publisher '" <> trimmed_name <> "' created!",
+                200,
+              )
+            Error(error) ->
+              case error {
+                protocol.PublisherAlreadyExists ->
+                  wisp.html_response("Publisher already registered", 400)
+                protocol.PublisherTargetNotFound ->
+                  wisp.html_response("Topic not found", 400)
+                protocol.PublisherFailedToStart ->
+                  wisp.html_response("Publisher actor failed to start", 500)
               }
           }
         }

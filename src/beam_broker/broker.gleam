@@ -79,7 +79,7 @@ fn handle_message(state: State, message: BrokerMessage) {
           actor.continue(create_topic(name, state, reply_to))
         protocol.CreateConsumer(reply_to, topic) ->
           actor.continue(create_consumer(topic, state, reply_to))
-        protocol.CreatePublisher(topic, reply_to) ->
+        protocol.CreatePublisher(reply_to, topic) ->
           actor.continue(create_publisher(topic, state, reply_to))
         protocol.PublishEvent(publisher, event, reply_to) ->
           actor.continue(publish(publisher, event, state, reply_to))
@@ -138,6 +138,10 @@ fn register_topic(
   logging.log(logging.Info, "registered topic: " <> name)
   case dict.get(state.consumers, name) {
     Ok(found) -> process.send(found, protocol.ResyncConsumer(subject))
+    Error(_) -> Nil
+  }
+  case dict.get(state.publishers, name) {
+    Ok(found) -> process.send(found, protocol.ResyncPublisher(subject))
     Error(_) -> Nil
   }
   State(..state, topics: new_topics)
@@ -209,11 +213,15 @@ fn register_consumer(
   State(..state, consumers: new_consumers)
 }
 
-fn create_publisher(topic: String, state: State, reply_to: Subject(Response)) {
+fn create_publisher(
+  topic: String,
+  state: State,
+  reply_to: Subject(Result(Nil, protocol.CreatePublisherError)),
+) {
   case dict.get(state.topics, topic) {
     Ok(found) -> new_publisher(topic, found, state, reply_to)
     Error(_) -> {
-      process.send(reply_to, protocol.TopicNotFound)
+      process.send(reply_to, Error(protocol.PublisherTargetNotFound))
       logging.log(logging.Warning, "topic not found: " <> topic)
       state
     }
@@ -224,12 +232,12 @@ fn new_publisher(
   name: String,
   topic: Subject(protocol.TopicMessage),
   state: State,
-  reply_to: Subject(Response),
+  reply_to: Subject(Result(Nil, protocol.CreatePublisherError)),
 ) -> State {
   let supervisor = factory.get_by_name(state.publisher)
   case factory.start_child(supervisor, publisher.Args(name, topic, state.own)) {
     Ok(_) -> {
-      process.send(reply_to, _)
+      process.send(reply_to, Ok(Nil))
       state
     }
     Error(_) -> {
@@ -237,6 +245,7 @@ fn new_publisher(
         logging.Error,
         "failed to initialize publisher actor for topic: " <> name,
       )
+      process.send(reply_to, Error(protocol.PublisherFailedToStart))
       state
     }
   }

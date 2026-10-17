@@ -46,5 +46,9 @@ fn handle_message(state: State, message: PublisherMessage) {
       process.send(state.topic, protocol.Append(input))
       actor.continue(state)
     }
+    protocol.ResyncPublisher(topic) -> {
+      let new_state = State(topic)
+      actor.continue(new_state)
+    }
   }
 }
