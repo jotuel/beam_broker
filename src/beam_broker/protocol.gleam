@@ -8,6 +8,7 @@ pub type TopicMessage {
 pub type ConsumerMessage {
   Poll
   Receive(response: String)
+  ResyncConsumer(topic: process.Subject(TopicMessage))
 }
 
 pub type PublisherMessage {
@@ -17,6 +18,7 @@ pub type PublisherMessage {
 pub type BrokerMessage {
   ClientRequest(Request)
   RegisterTopic(name: String, subject: process.Subject(TopicMessage))
+  RegisterConsumer(name: String, subject: process.Subject(ConsumerMessage))
   RegisterPublisher(name: String, subject: process.Subject(PublisherMessage))
 }
 
@@ -26,7 +28,10 @@ pub type Request {
     name: String,
   )
 
-  CreateConsumer(topic: String, reply_to: process.Subject(Response))
+  CreateConsumer(
+    reply_to: process.Subject(Result(Nil, CreateConsumerError)),
+    topic: String,
+  )
 
   CreatePublisher(topic: String, reply_to: process.Subject(Response))
 
@@ -43,9 +48,14 @@ pub type CreateTopicError {
   TopicFailedToStart
 }
 
+pub type CreateConsumerError {
+  ConsumerAlreadyExists
+  ConsumerTargetNotFound
+  ConsumerFailedToStart
+}
+
 pub type Response {
   ConsumerCreated
-  PublisherCreated
   Published
 
   TopicNotFound

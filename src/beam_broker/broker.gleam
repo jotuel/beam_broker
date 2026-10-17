@@ -35,6 +35,7 @@ type State {
       factory.Message(publisher.Args, Subject(protocol.PublisherMessage)),
     ),
     topics: dict.Dict(String, Subject(protocol.TopicMessage)),
+    consumers: dict.Dict(String, Subject(protocol.ConsumerMessage)),
     publishers: dict.Dict(String, Subject(protocol.PublisherMessage)),
     own: Subject(BrokerMessage),
   )
@@ -49,6 +50,7 @@ pub fn start_actor(args: Args) {
     Ok(
       actor.initialised(State(
         topics: dict.new(),
+        consumers: dict.new(),
         publishers: dict.new(),
         topic: args.topic,
         consumer: args.consumer,
@@ -67,13 +69,15 @@ fn handle_message(state: State, message: BrokerMessage) {
   case message {
     protocol.RegisterTopic(name, subject) ->
       actor.continue(register_topic(name, subject, state))
+    protocol.RegisterConsumer(name, subject) ->
+      actor.continue(register_consumer(name, subject, state))
     protocol.RegisterPublisher(name, subject) ->
       actor.continue(register_publisher(name, subject, state))
     protocol.ClientRequest(request) -> {
       case request {
         protocol.CreateTopic(reply_to, name) ->
           actor.continue(create_topic(name, state, reply_to))
-        protocol.CreateConsumer(topic, reply_to) ->
+        protocol.CreateConsumer(reply_to, topic) ->
           actor.continue(create_consumer(topic, state, reply_to))
         protocol.CreatePublisher(topic, reply_to) ->
           actor.continue(create_publisher(topic, state, reply_to))
@@ -132,14 +136,34 @@ fn register_topic(
 ) -> State {
   let new_topics = dict.insert(state.topics, name, subject)
   logging.log(logging.Info, "registered topic: " <> name)
+  case dict.get(state.consumers, name) {
+    Ok(found) -> process.send(found, protocol.ResyncConsumer(subject))
+    Error(_) -> Nil
+  }
   State(..state, topics: new_topics)
 }
 
-fn create_consumer(topic: String, state: State, reply_to: Subject(Response)) {
+fn create_consumer(
+  topic: String,
+  state: State,
+  reply_to: Subject(Result(Nil, protocol.CreateConsumerError)),
+) {
   case dict.get(state.topics, topic) {
-    Ok(found) -> new_consumer(found, topic, state, reply_to)
+    Ok(found) -> {
+      case dict.get(state.consumers, topic) {
+        Ok(_) -> {
+          logging.log(
+            logging.Warning,
+            "consumer already initialized: " <> topic,
+          )
+          process.send(reply_to, Error(protocol.ConsumerAlreadyExists))
+          state
+        }
+        Error(_) -> new_consumer(found, topic, state, reply_to)
+      }
+    }
     Error(_) -> {
-      process.send(reply_to, protocol.TopicNotFound)
+      process.send(reply_to, Error(protocol.ConsumerTargetNotFound))
       logging.log(logging.Warning, "topic not found: " <> topic)
       state
     }
@@ -150,13 +174,17 @@ fn new_consumer(
   topic: Subject(protocol.TopicMessage),
   topic_name: String,
   state: State,
-  reply_to: Subject(Response),
+  reply_to: Subject(Result(Nil, protocol.CreateConsumerError)),
 ) -> State {
   let supervisor = factory.get_by_name(state.consumer)
-  case factory.start_child(supervisor, consumer.Args(topic)) {
-    Ok(started) -> {
-      process.send(reply_to, protocol.ConsumerCreated)
-      process.send(started.data, protocol.Poll)
+  case
+    factory.start_child(
+      supervisor,
+      consumer.Args(name: topic_name, reply_to: state.own, topic: topic),
+    )
+  {
+    Ok(_) -> {
+      process.send(reply_to, Ok(Nil))
       state
     }
     Error(_) -> {
@@ -164,9 +192,21 @@ fn new_consumer(
         logging.Error,
         "failed to start consumer actor for topic: " <> topic_name,
       )
+      process.send(reply_to, Error(protocol.ConsumerFailedToStart))
+
       state
     }
   }
+}
+
+fn register_consumer(
+  name: String,
+  subject: process.Subject(protocol.ConsumerMessage),
+  state: State,
+) -> State {
+  let new_consumers = dict.insert(state.consumers, name, subject)
+  logging.log(logging.Info, "registered consumer: " <> name)
+  State(..state, consumers: new_consumers)
 }
 
 fn create_publisher(topic: String, state: State, reply_to: Subject(Response)) {
@@ -189,7 +229,7 @@ fn new_publisher(
   let supervisor = factory.get_by_name(state.publisher)
   case factory.start_child(supervisor, publisher.Args(name, topic, state.own)) {
     Ok(_) -> {
-      process.send(reply_to, protocol.PublisherCreated)
+      process.send(reply_to, _)
       state
     }
     Error(_) -> {

@@ -4,7 +4,11 @@ import gleam/io
 import gleam/otp/actor
 
 pub type Args {
-  Args(topic: Subject(TopicMessage))
+  Args(
+    name: String,
+    reply_to: Subject(protocol.BrokerMessage),
+    topic: Subject(TopicMessage),
+  )
 }
 
 type State {
@@ -17,14 +21,27 @@ type State {
 /// the topic it subscribes to
 ///
 pub fn start_actor(args: Args) {
-  actor.new_with_initialiser(5000, fn(own) {
-    Ok(
-      actor.initialised(State(topic: args.topic, own: own))
-      |> actor.returning(own),
-    )
-  })
-  |> actor.on_message(handle_message)
-  |> actor.start
+  let started =
+    actor.new_with_initialiser(5000, fn(own) {
+      Ok(
+        actor.initialised(State(topic: args.topic, own: own))
+        |> actor.returning(own),
+      )
+    })
+    |> actor.on_message(handle_message)
+    |> actor.start
+
+  case started {
+    Ok(result) -> {
+      process.send(
+        args.reply_to,
+        protocol.RegisterConsumer(args.name, result.data),
+      )
+      process.send(result.data, protocol.Poll)
+    }
+    Error(_) -> Nil
+  }
+  started
 }
 
 fn handle_message(state: State, message: ConsumerMessage) {
@@ -37,6 +54,10 @@ fn handle_message(state: State, message: ConsumerMessage) {
     protocol.Receive(response) -> {
       io.println(response)
       actor.continue(state)
+    }
+    protocol.ResyncConsumer(topic) -> {
+      let new_state = State(..state, topic: topic)
+      actor.continue(new_state)
     }
   }
 }
