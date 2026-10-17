@@ -1,7 +1,7 @@
 import gleam/erlang/process
 
 pub type TopicMessage {
-  Append(String)
+  Append(reply_to: process.Subject(Result(Nil, Nil)), event: String)
   Read(replyto: process.Subject(ConsumerMessage))
 }
 
@@ -12,7 +12,7 @@ pub type ConsumerMessage {
 }
 
 pub type PublisherMessage {
-  Write(event: String)
+  Write(reply_to: process.Subject(Result(Nil, Nil)), event: String)
   ResyncPublisher(topic: process.Subject(TopicMessage))
 }
 
@@ -40,9 +40,9 @@ pub type Request {
   )
 
   PublishEvent(
+    reply_to: process.Subject(Result(Nil, PublishError)),
     consumer: String,
     event: String,
-    reply_to: process.Subject(Response),
   )
   ListTopics(reply_to: process.Subject(List(String)))
 }
@@ -62,6 +62,11 @@ pub type CreatePublisherError {
   PublisherAlreadyExists
   PublisherTargetNotFound
   PublisherFailedToStart
+}
+
+pub type PublishError {
+  PublisherNotFound
+  WriteFailed
 }
 
 pub type Response {

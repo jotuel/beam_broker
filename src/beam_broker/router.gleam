@@ -3,6 +3,7 @@ import beam_broker/web
 import gleam/erlang/process
 import gleam/http.{Get, Post}
 import gleam/list
+import gleam/result
 import gleam/string
 import simplifile
 import wisp.{type Request, type Response}
@@ -19,9 +20,7 @@ pub fn handle_request(request: Request, ctx: Context) -> Response {
     ["api", "topics"] -> create_topic(request, ctx)
     ["api", "consumers"] -> create_consumer(request, ctx)
     ["api", "publishers"] -> create_publisher(request, ctx)
-    ["api", "publish"] -> wisp.not_found()
-
-    //todo
+    ["api", "publish"] -> publish_event(request, ctx)
     ["api", "topics", "list"] -> list_topics(request, ctx)
     ["api", "topics", "options"] -> wisp.not_found()
     //todo
@@ -144,6 +143,41 @@ fn create_publisher(request: Request, ctx: Context) -> Response {
       }
     }
     Error(Nil) -> wisp.bad_request("no topic_name found")
+  }
+}
+
+fn publish_event(request: Request, ctx: Context) -> Response {
+  use <- wisp.require_method(request, Post)
+  use form_data <- wisp.require_form(request)
+
+  let topic_result =
+    list.key_find(form_data.values, "topic_name")
+    |> result.map(string.trim)
+
+  let payload_result =
+    list.key_find(form_data.values, "payload")
+    |> result.map(string.trim)
+
+  case topic_result, payload_result {
+    Ok(topic), Ok(payload) if topic != "" && payload != "" -> {
+      let subject = process.named_subject(ctx.broker_ref)
+      case
+        process.call(subject, 1000, fn(reply_to) {
+          ClientRequest(protocol.PublishEvent(reply_to, topic, payload))
+        })
+      {
+        Ok(_) ->
+          wisp.html_response("Event published to '" <> topic <> "'!", 200)
+        Error(error) ->
+          case error {
+            protocol.WriteFailed ->
+              wisp.html_response("Failed to write event", 500)
+            protocol.PublisherNotFound ->
+              wisp.html_response("Publisher not found", 400)
+          }
+      }
+    }
+    _, _ -> wisp.bad_request("Missing or empty topic_name or payload")
   }
 }
 

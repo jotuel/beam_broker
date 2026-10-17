@@ -1,5 +1,5 @@
 import beam_broker/consumer
-import beam_broker/protocol.{type BrokerMessage, type Response}
+import beam_broker/protocol.{type BrokerMessage}
 import beam_broker/publisher
 import beam_broker/topic
 import gleam/dict
@@ -81,7 +81,7 @@ fn handle_message(state: State, message: BrokerMessage) {
           actor.continue(create_consumer(topic, state, reply_to))
         protocol.CreatePublisher(reply_to, topic) ->
           actor.continue(create_publisher(topic, state, reply_to))
-        protocol.PublishEvent(publisher, event, reply_to) ->
+        protocol.PublishEvent(reply_to, publisher, event) ->
           actor.continue(publish(publisher, event, state, reply_to))
         protocol.ListTopics(reply_to) ->
           actor.continue(list_topics(state, reply_to))
@@ -265,16 +265,18 @@ fn publish(
   publisher: String,
   event: String,
   state: State,
-  reply_to: Subject(Response),
+  reply_to: Subject(Result(Nil, protocol.PublishError)),
 ) -> State {
   case dict.get(state.publishers, publisher) {
     Ok(found) -> {
-      process.send(found, protocol.Write(event))
-      process.send(reply_to, protocol.Published)
+      case process.call(found, 1000, fn(own) { protocol.Write(own, event) }) {
+        Ok(_) -> process.send(reply_to, Ok(Nil))
+        Error(_) -> process.send(reply_to, Error(protocol.WriteFailed))
+      }
       state
     }
     Error(_) -> {
-      process.send(reply_to, protocol.PublishFailed)
+      process.send(reply_to, Error(protocol.PublisherNotFound))
       logging.log(logging.Warning, "publisher not found: " <> publisher)
       state
     }

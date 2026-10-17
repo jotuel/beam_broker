@@ -1,15 +1,19 @@
 import beam_broker/protocol.{type TopicMessage}
 import gleam/erlang/process.{type Subject}
+import gleam/list
 import gleam/otp/actor
+import gleam/time/calendar
+import gleam/time/timestamp
 import logging
 import simplifile
+import splitter
 
 pub type Args {
   Args(file_path: String, reply_to: Subject(protocol.BrokerMessage))
 }
 
 pub type State {
-  State(file_path: String, own: Subject(TopicMessage), next_offset: Int)
+  State(file_path: String, own: Subject(TopicMessage), event_count: Int)
 }
 
 /// Start a topic actor
@@ -21,45 +25,66 @@ pub type State {
 pub fn start_actor(
   args: Args,
 ) -> Result(actor.Started(Subject(TopicMessage)), actor.StartError) {
-  let _ = simplifile.create_file(args.file_path)
-
-  let started =
-    actor.new_with_initialiser(5000, fn(own) {
-      Ok(
-        actor.initialised(State(
-          file_path: args.file_path,
-          own: own,
-          next_offset: 0,
-        ))
-        |> actor.returning(own),
-      )
-    })
-    |> actor.on_message(handle_message)
-    |> actor.start
-  case started {
-    Ok(result) -> {
-      process.send(
-        args.reply_to,
-        protocol.RegisterTopic(args.file_path, result.data),
-      )
+  let existing_events = load_file(args.file_path)
+  case existing_events {
+    Error(_) -> Error(actor.InitFailed("failed to load file"))
+    Ok(amount) -> {
+      let started =
+        actor.new_with_initialiser(5000, fn(own) {
+          Ok(
+            actor.initialised(State(
+              file_path: args.file_path,
+              own: own,
+              event_count: amount,
+            ))
+            |> actor.returning(own),
+          )
+        })
+        |> actor.on_message(handle_message)
+        |> actor.start
+      case started {
+        Ok(result) -> {
+          process.send(
+            args.reply_to,
+            protocol.RegisterTopic(args.file_path, result.data),
+          )
+        }
+        Error(_) -> Nil
+      }
+      started
     }
-    Error(_) -> Nil
   }
-  started
+}
+
+fn load_file(file_path: String) -> Result(Int, Nil) {
+  case simplifile.create_file(file_path) {
+    Ok(_) -> Ok(0)
+    Error(error) ->
+      case error {
+        simplifile.Eexist -> {
+          case simplifile.read(file_path) {
+            Ok(content) -> {
+              let line_end = splitter.new(["\n"])
+              Ok(list.length(splitter.split_all(line_end, content)))
+            }
+            Error(error) -> {
+              logging.log(logging.Warning, simplifile.describe_error(error))
+              Error(Nil)
+            }
+          }
+        }
+        _ -> {
+          logging.log(logging.Warning, simplifile.describe_error(error))
+          Error(Nil)
+        }
+      }
+  }
 }
 
 fn handle_message(state: State, message: TopicMessage) {
   case message {
-    protocol.Append(input) -> {
-      case simplifile.append(state.file_path, input) {
-        Ok(_) -> actor.continue(state)
-        Error(error) -> {
-          logging.log(logging.Warning, simplifile.describe_error(error))
-          actor.continue(state)
-        }
-      }
-    }
-
+    protocol.Append(reply_to, input) ->
+      actor.continue(append_event(state, input, reply_to))
     protocol.Read(replyto) -> {
       case simplifile.read(state.file_path) {
         Ok(result) -> {
@@ -71,6 +96,30 @@ fn handle_message(state: State, message: TopicMessage) {
           actor.continue(state)
         }
       }
+    }
+  }
+}
+
+fn append_event(
+  state: State,
+  input: String,
+  reply_to: process.Subject(Result(Nil, Nil)),
+) -> State {
+  let time_stamp =
+    timestamp.system_time()
+    |> timestamp.to_rfc3339(calendar.utc_offset)
+  let event = "[" <> time_stamp <> "]: " <> input <> "\n"
+  case simplifile.append(state.file_path, event) {
+    Ok(_) -> {
+      let new_event_count = state.event_count + 1
+      let new_state = State(..state, event_count: new_event_count)
+      process.send(reply_to, Ok(Nil))
+      new_state
+    }
+    Error(error) -> {
+      logging.log(logging.Warning, simplifile.describe_error(error))
+      process.send(reply_to, Error(Nil))
+      state
     }
   }
 }
