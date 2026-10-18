@@ -22,8 +22,7 @@ pub fn handle_request(request: Request, ctx: Context) -> Response {
     ["api", "publishers"] -> create_publisher(request, ctx)
     ["api", "publish"] -> publish_event(request, ctx)
     ["api", "topics", "list"] -> list_topics(request, ctx)
-    ["api", "topics", "options"] -> wisp.not_found()
-    //todo
+    ["api", "publishers", "options"] -> list_publishers(request, ctx)
     ["api", "consumers", "options"] -> wisp.not_found()
     //todo
     ["api", "consumer", "events"] -> wisp.not_found()
@@ -189,4 +188,29 @@ fn list_topics(request: Request, ctx: Context) -> Response {
       ClientRequest(protocol.ListTopics(reply_to))
     })
   wisp.html_response(string.join(result, "\n"), 200)
+}
+
+fn list_publishers(request: Request, ctx: Context) -> Response {
+  use <- wisp.require_method(request, Get)
+  let subject = process.named_subject(ctx.broker_ref)
+  let options_html =
+    process.call(subject, 1000, fn(reply_to) {
+      ClientRequest(protocol.ListPublishers(reply_to))
+    })
+    |> list.map(fn(publisher) {
+      "<option value=\"" <> publisher <> "\">" <> publisher <> "</option>"
+    })
+    |> string.join("")
+  case options_html == "" {
+    True -> {
+      let result =
+        "<option value=\"\">-- Select a Topic --</option>" <> options_html
+      wisp.html_response(result, 200)
+    }
+    False ->
+      wisp.html_response(
+        "<option value=\"\">No publishers registered</option>",
+        400,
+      )
+  }
 }

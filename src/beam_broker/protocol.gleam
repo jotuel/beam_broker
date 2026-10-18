@@ -45,6 +45,7 @@ pub type Request {
     event: String,
   )
   ListTopics(reply_to: process.Subject(List(String)))
+  ListPublishers(reply_to: process.Subject(List(String)))
 }
 
 pub type CreateTopicError {

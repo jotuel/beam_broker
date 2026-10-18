@@ -63,9 +63,9 @@
 			<section>
 				<h3>Publish Message</h3>
 				<form hx-post="/api/publish" hx-target="#publish-result" hx-swap="innerHTML">
-					<label for="topic-select">Select Topic / Publisher:</label>
-					<select id="topic-select" name="topic_name" hx-get="/api/topics/options" hx-trigger="load" required>
-						<option value="">Loading topics...</option>
+					<label for="publisher-select">Select Publisher:</label>
+					<select id="publisher-select" name="publisher_name" hx-get="/api/publishers/options" hx-trigger="load" required>
+						<option value="">Loading publishers...</option>
 					</select>
 
 					<input type="text" name="payload" placeholder="Enter message payload..." required />

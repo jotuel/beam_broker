@@ -85,6 +85,8 @@ fn handle_message(state: State, message: BrokerMessage) {
           actor.continue(publish(publisher, event, state, reply_to))
         protocol.ListTopics(reply_to) ->
           actor.continue(list_topics(state, reply_to))
+        protocol.ListPublishers(reply_to) ->
+          actor.continue(list_publishers(state, reply_to))
       }
     }
   }
@@ -285,5 +287,10 @@ fn publish(
 
 fn list_topics(state: State, reply_to: Subject(List(String))) {
   process.send(reply_to, dict.keys(state.topics))
+  state
+}
+
+fn list_publishers(state: State, reply_to: Subject(List(String))) {
+  process.send(reply_to, dict.keys(state.publishers))
   state
 }
