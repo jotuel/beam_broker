@@ -46,6 +46,7 @@ pub type Request {
   )
   ListTopics(reply_to: process.Subject(List(String)))
   ListPublishers(reply_to: process.Subject(List(String)))
+  ListConsumers(reply_to: process.Subject(List(String)))
 }
 
 pub type CreateTopicError {
@@ -68,12 +69,4 @@ pub type CreatePublisherError {
 pub type PublishError {
   PublisherNotFound
   WriteFailed
-}
-
-pub type Response {
-  ConsumerCreated
-  Published
-
-  TopicNotFound
-  PublishFailed
 }

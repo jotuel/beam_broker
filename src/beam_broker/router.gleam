@@ -23,8 +23,7 @@ pub fn handle_request(request: Request, ctx: Context) -> Response {
     ["api", "publish"] -> publish_event(request, ctx)
     ["api", "topics", "list"] -> list_topics(request, ctx)
     ["api", "publishers", "options"] -> list_publishers(request, ctx)
-    ["api", "consumers", "options"] -> wisp.not_found()
-    //todo
+    ["api", "consumers", "options"] -> list_consumers(request, ctx)
     ["api", "consumer", "events"] -> wisp.not_found()
     // todo
     _ -> wisp.not_found()
@@ -204,12 +203,37 @@ fn list_publishers(request: Request, ctx: Context) -> Response {
   case options_html == "" {
     True -> {
       let result =
-        "<option value=\"\">-- Select a Topic --</option>" <> options_html
+        "<option value=\"\">-- Select a Publisher --</option>" <> options_html
       wisp.html_response(result, 200)
     }
     False ->
       wisp.html_response(
         "<option value=\"\">No publishers registered</option>",
+        400,
+      )
+  }
+}
+
+fn list_consumers(request: Request, ctx: Context) -> Response {
+  use <- wisp.require_method(request, Get)
+  let subject = process.named_subject(ctx.broker_ref)
+  let options_html =
+    process.call(subject, 1000, fn(reply_to) {
+      ClientRequest(protocol.ListConsumers(reply_to))
+    })
+    |> list.map(fn(consumer) {
+      "<option value=\"" <> consumer <> "\">" <> consumer <> "</option>"
+    })
+    |> string.join("")
+  case options_html == "" {
+    True -> {
+      let result =
+        "<option value=\"\">-- Select a Consumer --</option>" <> options_html
+      wisp.html_response(result, 200)
+    }
+    False ->
+      wisp.html_response(
+        "<option value=\"\">No consumers registered</option>",
         400,
       )
   }
