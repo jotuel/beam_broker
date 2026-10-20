@@ -83,6 +83,8 @@ fn handle_message(state: State, message: BrokerMessage) {
           actor.continue(create_publisher(topic, state, reply_to))
         protocol.PublishEvent(reply_to, publisher, event) ->
           actor.continue(publish(publisher, event, state, reply_to))
+        protocol.ReadEvents(reply_to, consumer) ->
+          actor.continue(get_events(consumer, state, reply_to))
         protocol.ListTopics(reply_to) ->
           actor.continue(list_topics(state, reply_to))
         protocol.ListPublishers(reply_to) ->
@@ -282,6 +284,26 @@ fn publish(
     Error(_) -> {
       process.send(reply_to, Error(protocol.PublisherNotFound))
       logging.log(logging.Warning, "publisher not found: " <> publisher)
+      state
+    }
+  }
+}
+
+fn get_events(
+  consumer: String,
+  state: State,
+  reply_to: Subject(Result(List(String), protocol.ConsumeError)),
+) {
+  case dict.get(state.consumers, consumer) {
+    Ok(found) -> {
+      let events =
+        process.call(found, 1000, fn(own) { protocol.GetEvents(own) })
+      process.send(reply_to, Ok(events))
+      state
+    }
+    Error(_) -> {
+      process.send(reply_to, Error(protocol.ConsumerNotFound))
+      logging.log(logging.Warning, "consumer not found: " <> consumer)
       state
     }
   }
