@@ -2,7 +2,7 @@ import gleam/erlang/process
 
 pub type TopicMessage {
   Append(reply_to: process.Subject(Result(Nil, Nil)), event: String)
-  Read(replyto: process.Subject(Result(ReadResult, Nil)), current_index: Int)
+  Read(reply_to: process.Subject(Result(ReadResult, Nil)), current_index: Int)
 }
 
 pub type ReadResult {

@@ -124,6 +124,7 @@ fn read_events(
     Ok(result) -> {
       let unseen_events =
         split_to_list(result)
+        |> list.filter(fn(e) { e != "" })
         |> list.reverse()
         |> list.take(state.event_count - consumer_index)
         |> list.reverse()
