@@ -1,11 +1,12 @@
 import beam_broker/protocol.{type BrokerMessage, ClientRequest}
+import beam_broker/views
 import beam_broker/web
 import gleam/erlang/process
 import gleam/http.{Get, Post}
 import gleam/list
 import gleam/result
 import gleam/string
-import simplifile
+import lustre/element
 import wisp.{type Request, type Response}
 
 pub type Context {
@@ -24,7 +25,7 @@ pub fn handle_request(request: Request, ctx: Context) -> Response {
     ["api", "topics", "list"] -> list_topics(request, ctx)
     ["api", "publishers", "options"] -> list_publishers(request, ctx)
     ["api", "consumers", "options"] -> wisp.not_found()
-    //todo
+    // todo
     ["api", "consumer", "events"] -> wisp.not_found()
     // todo
     _ -> wisp.not_found()
@@ -33,10 +34,9 @@ pub fn handle_request(request: Request, ctx: Context) -> Response {
 
 fn home_page(request: Request) -> Response {
   use <- wisp.require_method(request, Get)
-  case simplifile.read("public/index.html") {
-    Ok(html) -> wisp.html_response(html, 200)
-    Error(_) -> wisp.html_response("<h1>Index.html not found</h1>", 500)
-  }
+  views.home()
+  |> element.to_document_string
+  |> wisp.html_response(200)
 }
 
 fn create_topic(request: Request, ctx: Context) -> Response {
@@ -46,7 +46,10 @@ fn create_topic(request: Request, ctx: Context) -> Response {
     Ok(topic_name) -> {
       let trimmed_name = string.trim(topic_name)
       case trimmed_name == "" {
-        True -> wisp.html_response("Topic name cannot be empty", 400)
+        True ->
+          views.error("Topic name cannot be empty")
+          |> element.to_string
+          |> wisp.html_response(400)
         False -> {
           let subject = process.named_subject(ctx.broker_ref)
           case
@@ -55,13 +58,19 @@ fn create_topic(request: Request, ctx: Context) -> Response {
             })
           {
             Ok(_) ->
-              wisp.html_response("Topic '" <> trimmed_name <> "' created!", 200)
-            Error(error) ->
-              case error {
+              views.success("Topic '" <> trimmed_name <> "' created!")
+              |> element.to_string
+              |> wisp.html_response(200)
+            Error(err) ->
+              case err {
                 protocol.TopicAlreadyExists ->
-                  wisp.html_response("Topic already exists", 400)
+                  views.error("Topic already exists")
+                  |> element.to_string
+                  |> wisp.html_response(400)
                 protocol.TopicFailedToStart ->
-                  wisp.html_response("Topic actor failed to start", 500)
+                  views.error("Topic actor failed to start")
+                  |> element.to_string
+                  |> wisp.html_response(500)
               }
           }
         }
@@ -78,7 +87,10 @@ fn create_consumer(request: Request, ctx: Context) -> Response {
     Ok(topic_name) -> {
       let trimmed_name = string.trim(topic_name)
       case trimmed_name == "" {
-        True -> wisp.html_response("Topic name cannot be empty", 400)
+        True ->
+          views.error("Topic name cannot be empty")
+          |> element.to_string
+          |> wisp.html_response(400)
         False -> {
           let subject = process.named_subject(ctx.broker_ref)
           case
@@ -87,18 +99,23 @@ fn create_consumer(request: Request, ctx: Context) -> Response {
             })
           {
             Ok(_) ->
-              wisp.html_response(
-                "Consumer '" <> trimmed_name <> "' created!",
-                200,
-              )
-            Error(error) ->
-              case error {
+              views.success("Consumer '" <> trimmed_name <> "' created!")
+              |> element.to_string
+              |> wisp.html_response(200)
+            Error(err) ->
+              case err {
                 protocol.ConsumerAlreadyExists ->
-                  wisp.html_response("Consumer already registered", 400)
+                  views.error("Consumer already registered")
+                  |> element.to_string
+                  |> wisp.html_response(400)
                 protocol.ConsumerTargetNotFound ->
-                  wisp.html_response("Topic not found", 400)
+                  views.error("Topic not found")
+                  |> element.to_string
+                  |> wisp.html_response(400)
                 protocol.ConsumerFailedToStart ->
-                  wisp.html_response("Consumer actor failed to start", 500)
+                  views.error("Consumer actor failed to start")
+                  |> element.to_string
+                  |> wisp.html_response(500)
               }
           }
         }
@@ -115,7 +132,10 @@ fn create_publisher(request: Request, ctx: Context) -> Response {
     Ok(topic_name) -> {
       let trimmed_name = string.trim(topic_name)
       case trimmed_name == "" {
-        True -> wisp.html_response("Topic name cannot be empty", 400)
+        True ->
+          views.error("Topic name cannot be empty")
+          |> element.to_string
+          |> wisp.html_response(400)
         False -> {
           let subject = process.named_subject(ctx.broker_ref)
           case
@@ -124,18 +144,23 @@ fn create_publisher(request: Request, ctx: Context) -> Response {
             })
           {
             Ok(_) ->
-              wisp.html_response(
-                "Publisher '" <> trimmed_name <> "' created!",
-                200,
-              )
-            Error(error) ->
-              case error {
+              views.success("Publisher '" <> trimmed_name <> "' created!")
+              |> element.to_string
+              |> wisp.html_response(200)
+            Error(err) ->
+              case err {
                 protocol.PublisherAlreadyExists ->
-                  wisp.html_response("Publisher already registered", 400)
+                  views.error("Publisher already registered")
+                  |> element.to_string
+                  |> wisp.html_response(400)
                 protocol.PublisherTargetNotFound ->
-                  wisp.html_response("Topic not found", 400)
+                  views.error("Topic not found")
+                  |> element.to_string
+                  |> wisp.html_response(400)
                 protocol.PublisherFailedToStart ->
-                  wisp.html_response("Publisher actor failed to start", 500)
+                  views.error("Publisher actor failed to start")
+                  |> element.to_string
+                  |> wisp.html_response(500)
               }
           }
         }
@@ -151,6 +176,7 @@ fn publish_event(request: Request, ctx: Context) -> Response {
 
   let topic_result =
     list.key_find(form_data.values, "topic_name")
+    |> result.lazy_or(fn() { list.key_find(form_data.values, "publisher_name") })
     |> result.map(string.trim)
 
   let payload_result =
@@ -166,51 +192,47 @@ fn publish_event(request: Request, ctx: Context) -> Response {
         })
       {
         Ok(_) ->
-          wisp.html_response("Event published to '" <> topic <> "'!", 200)
-        Error(error) ->
-          case error {
+          views.success("Event published to '" <> topic <> "'!")
+          |> element.to_string
+          |> wisp.html_response(200)
+        Error(err) ->
+          case err {
             protocol.WriteFailed ->
-              wisp.html_response("Failed to write event", 500)
+              views.error("Failed to write event")
+              |> element.to_string
+              |> wisp.html_response(500)
             protocol.PublisherNotFound ->
-              wisp.html_response("Publisher not found", 400)
+              views.error("Publisher not found")
+              |> element.to_string
+              |> wisp.html_response(400)
           }
       }
     }
-    _, _ -> wisp.bad_request("Missing or empty topic_name or payload")
+    _, _ ->
+      wisp.bad_request("Missing or empty topic_name/publisher_name or payload")
   }
 }
 
 fn list_topics(request: Request, ctx: Context) -> Response {
   use <- wisp.require_method(request, Get)
   let subject = process.named_subject(ctx.broker_ref)
-  let result =
+  let topics =
     process.call(subject, 1000, fn(reply_to) {
       ClientRequest(protocol.ListTopics(reply_to))
     })
-  wisp.html_response(string.join(result, "\n"), 200)
+  views.topics_list(topics)
+  |> element.to_string
+  |> wisp.html_response(200)
 }
 
 fn list_publishers(request: Request, ctx: Context) -> Response {
   use <- wisp.require_method(request, Get)
   let subject = process.named_subject(ctx.broker_ref)
-  let options_html =
+  let publishers =
     process.call(subject, 1000, fn(reply_to) {
       ClientRequest(protocol.ListPublishers(reply_to))
     })
-    |> list.map(fn(publisher) {
-      "<option value=\"" <> publisher <> "\">" <> publisher <> "</option>"
-    })
-    |> string.join("")
-  case options_html == "" {
-    True -> {
-      let result =
-        "<option value=\"\">-- Select a Topic --</option>" <> options_html
-      wisp.html_response(result, 200)
-    }
-    False ->
-      wisp.html_response(
-        "<option value=\"\">No publishers registered</option>",
-        400,
-      )
-  }
+  views.publisher_options(publishers)
+  |> element.to_string
+  |> wisp.html_response(200)
 }
