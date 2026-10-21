@@ -43,7 +43,12 @@ pub fn start_actor(args: Args) {
 fn handle_message(state: State, message: PublisherMessage) {
   case message {
     protocol.Write(reply_to, event) -> {
-      process.send(state.topic, protocol.Append(reply_to, event))
+      case
+        process.call(state.topic, 1000, fn(own) { protocol.Append(own, event) })
+      {
+        Ok(_) -> process.send(reply_to, Ok(Nil))
+        Error(_) -> process.send(reply_to, Error(Nil))
+      }
       actor.continue(state)
     }
     protocol.ResyncPublisher(topic) -> {
