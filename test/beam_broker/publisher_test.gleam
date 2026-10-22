@@ -29,6 +29,7 @@ pub fn write_test() {
     Ok(_) -> Nil
     Error(_) -> panic as "failed to write"
   }
+  let _ = simplifile.delete(name)
 }
 
 fn start_topic(
