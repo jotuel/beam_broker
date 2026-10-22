@@ -1,7 +1,8 @@
-import beam_broker/protocol.{type TopicMessage}
+import beam_broker/protocol.{type ReadResult, type TopicMessage}
 import gleam/erlang/process.{type Subject}
 import gleam/list
 import gleam/otp/actor
+import gleam/string
 import gleam/time/calendar
 import gleam/time/timestamp
 import logging
@@ -64,8 +65,8 @@ fn load_file(file_path: String) -> Result(Int, Nil) {
         simplifile.Eexist -> {
           case simplifile.read(file_path) {
             Ok(content) -> {
-              let line_end = splitter.new(["\n"])
-              Ok(list.length(splitter.split_all(line_end, content)))
+              let list = split_to_list(content)
+              Ok(list.length(list))
             }
             Error(error) -> {
               logging.log(logging.Warning, simplifile.describe_error(error))
@@ -85,18 +86,8 @@ fn handle_message(state: State, message: TopicMessage) {
   case message {
     protocol.Append(reply_to, input) ->
       actor.continue(append_event(state, input, reply_to))
-    protocol.Read(replyto) -> {
-      case simplifile.read(state.file_path) {
-        Ok(result) -> {
-          actor.send(replyto, protocol.Receive(result))
-          actor.continue(state)
-        }
-        Error(error) -> {
-          logging.log(logging.Error, simplifile.describe_error(error))
-          actor.continue(state)
-        }
-      }
-    }
+    protocol.Read(reply_to, consumer_index) ->
+      actor.continue(read_events(state, consumer_index, reply_to))
   }
 }
 
@@ -122,4 +113,41 @@ fn append_event(
       state
     }
   }
+}
+
+fn read_events(
+  state: State,
+  consumer_index: Int,
+  reply_to: process.Subject(Result(ReadResult, Nil)),
+) -> State {
+  case simplifile.read(state.file_path) {
+    Ok(result) -> {
+      let unseen_events =
+        split_to_list(result)
+        |> list.filter(fn(e) { e != "" })
+        |> list.reverse()
+        |> list.take(state.event_count - consumer_index)
+        |> list.reverse()
+        |> list.map(fn(e) { string.trim(e) })
+
+      actor.send(
+        reply_to,
+        Ok(protocol.ReadResult(
+          events: unseen_events,
+          new_index: state.event_count,
+        )),
+      )
+      state
+    }
+    Error(error) -> {
+      logging.log(logging.Error, simplifile.describe_error(error))
+      actor.send(reply_to, Error(Nil))
+      state
+    }
+  }
+}
+
+fn split_to_list(events: String) -> List(String) {
+  let line_end = splitter.new(["\n"])
+  splitter.split_all(line_end, events)
 }

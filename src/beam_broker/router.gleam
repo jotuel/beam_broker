@@ -24,10 +24,8 @@ pub fn handle_request(request: Request, ctx: Context) -> Response {
     ["api", "publish"] -> publish_event(request, ctx)
     ["api", "topics", "list"] -> list_topics(request, ctx)
     ["api", "publishers", "options"] -> list_publishers(request, ctx)
-    ["api", "consumers", "options"] -> wisp.not_found()
-    // todo
-    ["api", "consumer", "events"] -> wisp.not_found()
-    // todo
+    ["api", "consumers", "options"] -> list_consumers(request, ctx)
+    ["api", "consumer", "events"] -> get_events(request, ctx)
     _ -> wisp.not_found()
   }
 }
@@ -174,7 +172,7 @@ fn publish_event(request: Request, ctx: Context) -> Response {
   use <- wisp.require_method(request, Post)
   use form_data <- wisp.require_form(request)
 
-  let topic_result =
+  let publisher_result =
     list.key_find(form_data.values, "topic_name")
     |> result.lazy_or(fn() { list.key_find(form_data.values, "publisher_name") })
     |> result.map(string.trim)
@@ -183,16 +181,16 @@ fn publish_event(request: Request, ctx: Context) -> Response {
     list.key_find(form_data.values, "payload")
     |> result.map(string.trim)
 
-  case topic_result, payload_result {
-    Ok(topic), Ok(payload) if topic != "" && payload != "" -> {
+  case publisher_result, payload_result {
+    Ok(publisher), Ok(payload) if publisher != "" && payload != "" -> {
       let subject = process.named_subject(ctx.broker_ref)
       case
         process.call(subject, 1000, fn(reply_to) {
-          ClientRequest(protocol.PublishEvent(reply_to, topic, payload))
+          ClientRequest(protocol.PublishEvent(reply_to, publisher, payload))
         })
       {
         Ok(_) ->
-          views.success("Event published to '" <> topic <> "'!")
+          views.success("Event published to '" <> publisher <> "'!")
           |> element.to_string
           |> wisp.html_response(200)
         Error(err) ->
@@ -235,4 +233,54 @@ fn list_publishers(request: Request, ctx: Context) -> Response {
   views.publisher_options(publishers)
   |> element.to_string
   |> wisp.html_response(200)
+}
+
+fn list_consumers(request: Request, ctx: Context) -> Response {
+  use <- wisp.require_method(request, Get)
+  let subject = process.named_subject(ctx.broker_ref)
+  let consumers =
+    process.call(subject, 1000, fn(reply_to) {
+      ClientRequest(protocol.ListConsumers(reply_to))
+    })
+  views.consumer_options(consumers)
+  |> element.to_string
+  |> wisp.html_response(200)
+}
+
+fn get_events(request: Request, ctx: Context) -> Response {
+  use <- wisp.require_method(request, Get)
+  let query_params = wisp.get_query(request)
+
+  let consumer_result =
+    list.key_find(query_params, "consumer_name")
+    |> result.map(string.trim)
+
+  case consumer_result {
+    Ok(consumer) if consumer != "" -> {
+      let subject = process.named_subject(ctx.broker_ref)
+      case
+        process.call(subject, 1000, fn(reply_to) {
+          ClientRequest(protocol.ReadEvents(reply_to, consumer))
+        })
+      {
+        Ok(events) -> {
+          let html_events =
+            events
+            |> list.map(fn(e) { "<div>" <> e <> "</div>" })
+            |> string.join("")
+          let final_html = case html_events {
+            "" -> "<p>No events yet...</p>"
+            _ -> html_events
+          }
+          wisp.html_response(final_html, 200)
+        }
+        Error(error) ->
+          case error {
+            protocol.ConsumerNotFound ->
+              wisp.html_response("Consumer not found!", 400)
+          }
+      }
+    }
+    _ -> wisp.bad_request("Missing or empty consumer_name")
+  }
 }

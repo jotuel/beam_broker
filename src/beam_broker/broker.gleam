@@ -83,10 +83,14 @@ fn handle_message(state: State, message: BrokerMessage) {
           actor.continue(create_publisher(topic, state, reply_to))
         protocol.PublishEvent(reply_to, publisher, event) ->
           actor.continue(publish(publisher, event, state, reply_to))
+        protocol.ReadEvents(reply_to, consumer) ->
+          actor.continue(get_events(consumer, state, reply_to))
         protocol.ListTopics(reply_to) ->
           actor.continue(list_topics(state, reply_to))
         protocol.ListPublishers(reply_to) ->
           actor.continue(list_publishers(state, reply_to))
+        protocol.ListConsumers(reply_to) ->
+          actor.continue(list_consumers(state, reply_to))
       }
     }
   }
@@ -285,6 +289,26 @@ fn publish(
   }
 }
 
+fn get_events(
+  consumer: String,
+  state: State,
+  reply_to: Subject(Result(List(String), protocol.ConsumeError)),
+) {
+  case dict.get(state.consumers, consumer) {
+    Ok(found) -> {
+      let events =
+        process.call(found, 1000, fn(own) { protocol.GetEvents(own) })
+      process.send(reply_to, Ok(events))
+      state
+    }
+    Error(_) -> {
+      process.send(reply_to, Error(protocol.ConsumerNotFound))
+      logging.log(logging.Warning, "consumer not found: " <> consumer)
+      state
+    }
+  }
+}
+
 fn list_topics(state: State, reply_to: Subject(List(String))) {
   process.send(reply_to, dict.keys(state.topics))
   state
@@ -292,5 +316,10 @@ fn list_topics(state: State, reply_to: Subject(List(String))) {
 
 fn list_publishers(state: State, reply_to: Subject(List(String))) {
   process.send(reply_to, dict.keys(state.publishers))
+  state
+}
+
+fn list_consumers(state: State, reply_to: Subject(List(String))) {
+  process.send(reply_to, dict.keys(state.consumers))
   state
 }
