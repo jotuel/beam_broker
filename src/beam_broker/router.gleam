@@ -59,6 +59,7 @@ fn create_topic(request: Request, ctx: Context) -> Response {
               views.success("Topic '" <> trimmed_name <> "' created!")
               |> element.to_string
               |> wisp.html_response(200)
+              |> wisp.set_header("hx-trigger", "topics-updated")
             Error(err) ->
               case err {
                 protocol.TopicAlreadyExists ->
@@ -100,6 +101,7 @@ fn create_consumer(request: Request, ctx: Context) -> Response {
               views.success("Consumer '" <> trimmed_name <> "' created!")
               |> element.to_string
               |> wisp.html_response(200)
+              |> wisp.set_header("hx-trigger", "consumers-updated")
             Error(err) ->
               case err {
                 protocol.ConsumerAlreadyExists ->
@@ -126,7 +128,10 @@ fn create_consumer(request: Request, ctx: Context) -> Response {
 fn create_publisher(request: Request, ctx: Context) -> Response {
   use <- wisp.require_method(request, Post)
   use form_data <- wisp.require_form(request)
-  case list.key_find(form_data.values, "topic_name") {
+  let name_result =
+    list.key_find(form_data.values, "publisher_name")
+    |> result.lazy_or(fn() { list.key_find(form_data.values, "topic_name") })
+  case name_result {
     Ok(topic_name) -> {
       let trimmed_name = string.trim(topic_name)
       case trimmed_name == "" {
@@ -145,6 +150,7 @@ fn create_publisher(request: Request, ctx: Context) -> Response {
               views.success("Publisher '" <> trimmed_name <> "' created!")
               |> element.to_string
               |> wisp.html_response(200)
+              |> wisp.set_header("hx-trigger", "publishers-updated")
             Error(err) ->
               case err {
                 protocol.PublisherAlreadyExists ->
@@ -164,7 +170,7 @@ fn create_publisher(request: Request, ctx: Context) -> Response {
         }
       }
     }
-    Error(Nil) -> wisp.bad_request("no topic_name found")
+    Error(Nil) -> wisp.bad_request("no publisher_name found")
   }
 }
 

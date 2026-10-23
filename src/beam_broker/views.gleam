@@ -150,8 +150,8 @@ fn create_publisher_section() -> Element(msg) {
       [
         html.input([
           attribute.type_("text"),
-          attribute.name("topic_name"),
-          attribute.placeholder("Target topic name"),
+          attribute.name("publisher_name"),
+          attribute.placeholder("Target topics name"),
           attribute.required(True),
         ]),
         html.button([attribute.type_("submit")], [
@@ -170,7 +170,7 @@ fn active_topics_section() -> Element(msg) {
       [
         attribute.id("topics-list-container"),
         hx_get("/api/topics/list"),
-        hx_trigger("load, every 3s"),
+        hx_trigger("load, topics-updated from:body, every 3s"),
         hx_swap("innerHTML"),
       ],
       [html.p([], [element.text("Loading active topics...")])],
@@ -197,7 +197,8 @@ fn publisher_control_section() -> Element(msg) {
             attribute.id("publisher-select"),
             attribute.name("publisher_name"),
             hx_get("/api/publishers/options"),
-            hx_trigger("load"),
+            hx_target("this"),
+            hx_trigger("load, publishers-updated from:body"),
             attribute.required(True),
           ],
           [
@@ -229,9 +230,9 @@ fn consumer_stream_section() -> Element(msg) {
     html.select(
       [
         attribute.id("consumer-select"),
-        attribute.name("consumer_id"),
+        attribute.name("consumer_name"),
         hx_get("/api/consumers/options"),
-        hx_trigger("load"),
+        hx_trigger("load, consumers-updated from:body"),
       ],
       [
         html.option([attribute.value("")], "Loading consumers..."),
@@ -243,7 +244,7 @@ fn consumer_stream_section() -> Element(msg) {
         [
           attribute.id("event-output-box"),
           hx_get("/api/consumer/events"),
-          hx_trigger("load, every 2s"),
+          hx_trigger("load, change from:#consumers-select, every 2s"),
           hx_include("#consumer-select"),
           hx_swap("innerHTML"),
           attribute.styles([
@@ -281,8 +282,8 @@ pub fn publisher_options(publishers: List(String)) -> Element(msg) {
     _ ->
       element.fragment([
         html.option([attribute.value("")], "-- Select a Publisher --"),
-        ..list.map(publishers, fn(pub_name) {
-          html.option([attribute.value(pub_name)], pub_name)
+        ..list.map(publishers, fn(publisher_name) {
+          html.option([attribute.value(publisher_name)], publisher_name)
         })
       ])
   }
