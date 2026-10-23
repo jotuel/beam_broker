@@ -269,24 +269,19 @@ fn get_events(request: Request, ctx: Context) -> Response {
           ClientRequest(protocol.ReadEvents(reply_to, consumer))
         })
       {
-        Ok(events) -> {
-          let html_events =
-            events
-            |> list.map(fn(e) { "<div>" <> e <> "</div>" })
-            |> string.join("")
-          let final_html = case html_events {
-            "" -> "<p>No events yet...</p>"
-            _ -> html_events
-          }
-          wisp.html_response(final_html, 200)
-        }
-        Error(error) ->
-          case error {
-            protocol.ConsumerNotFound ->
-              wisp.html_response("Consumer not found!", 400)
-          }
+        Ok(events) ->
+          views.consumer_events(events)
+          |> element.to_string
+          |> wisp.html_response(200)
+        Error(protocol.ConsumerNotFound) ->
+          views.consumer_events_empty()
+          |> element.to_string
+          |> wisp.html_response(200)
       }
     }
-    _ -> wisp.bad_request("Missing or empty consumer_name")
+    _ ->
+      views.consumer_events_empty()
+      |> element.to_string
+      |> wisp.html_response(200)
   }
 }

@@ -3,7 +3,7 @@ import lustre/attribute
 import lustre/element.{type Element}
 import lustre/element/html
 
-// HTMX attributes helper
+// HTMX attributes helpers
 pub fn hx_post(url: String) -> attribute.Attribute(msg) {
   attribute.attribute("hx-post", url)
 }
@@ -28,7 +28,7 @@ pub fn hx_include(include: String) -> attribute.Attribute(msg) {
   attribute.attribute("hx-include", include)
 }
 
-/// The complete homepage rendered with Lustre
+/// The homepage rendered with Lustre
 pub fn home() -> Element(msg) {
   html.html([attribute.lang("en-US")], [
     html.head([], [
@@ -301,6 +301,24 @@ pub fn consumer_options(consumers: List(String)) -> Element(msg) {
         })
       ])
   }
+}
+
+/// Type-safe events view
+pub fn consumer_events(events: List(String)) -> Element(msg) {
+  case events {
+    [] -> consumer_events_empty()
+    _ ->
+      html.div([],
+        list.map(events, fn(event_content) {
+          html.div([attribute.value("")], [element.text(event_content)])
+        })
+      )
+  }
+}
+
+/// Type-safe empty events view
+pub fn consumer_events_empty() -> Element(msg) {
+  html.div([], [element.text("No events yet...")])
 }
 
 /// Type-safe success feedback
